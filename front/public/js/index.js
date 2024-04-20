@@ -1,24 +1,37 @@
 
 let gameHasStarted = false;
+let ready = false;
 var board = null
 var game = new Chess()
 var $status = $('#status')
 var $pgn = $('#pgn')
+let $timer = $('#timer')
+let timeOver = false;
 let gameOver = false;
+
+const duration = 10;
+$('#startBtn').click(function startClick(){
+    console.log('start btn works')
+    gameHasStarted = true;
+    socket.emit('startGame')
+    startGame()
+    updateStatus()
+})
+console.log('start',$('#start'))
+
 
 function onDragStart (source, piece, position, orientation) {
     // do not pick up pieces if the game is over
     if (game.game_over()) return false
     if (!gameHasStarted) return false;
     if (gameOver) return false;
-
     if ((playerColor === 'black' && piece.search(/^w/) !== -1) || (playerColor === 'white' && piece.search(/^b/) !== -1)) {
         return false;
     }
 
     // only pick up pieces for the side to move
     if ((game.turn() === 'w' && piece.search(/^b/) !== -1) || (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
-        return false
+        return falseupdateStatus
     }
 }
 
@@ -30,19 +43,18 @@ function onDrop (source, target) {
     };
     // see if the move is legal
     var move = game.move(theMove);
-
-
     // illegal move
     if (move === null) return 'snapback'
 
     socket.emit('move', theMove);
-
+    console.log('moved')
     updateStatus()
 }
 
 socket.on('newMove', function(move) {
     game.move(move);
     board.position(game.fen());
+    resetTimer();
     updateStatus();
 });
 
@@ -54,7 +66,7 @@ function onSnapEnd () {
 
 function updateStatus () {
     var status = ''
-
+    
     var moveColor = 'White'
     if (game.turn() === 'b') {
         moveColor = 'Black'
@@ -69,8 +81,16 @@ function updateStatus () {
     else if (game.in_draw()) {
         status = 'Game over, drawn position'
     }
+    else if (ready && !gameHasStarted) {
+        status = 'Both players have connected, Ready to play!'
+    }
 
-    else if (gameOver) {
+    else if (gameOver && timeOver) {
+        const failPlayer={"b":"Black",'w':"White"};
+        const winPlayer ={"b":"White",'w':"Black"};
+        status = failPlayer[game.turn()]+' failed to move,'+winPlayer[game.turn()]+ ' win!'
+    }
+    else if (gameOver && !timeOver) {
         status = 'Opponent disconnected, you win!'
     }
 
@@ -93,7 +113,7 @@ function updateStatus () {
     $pgn.html(game.pgn())
 }
 
-var config = {
+let config = {
     draggable: true,
     position: 'start',
     onDragStart: onDragStart,
@@ -115,8 +135,44 @@ if (urlParams.get('code')) {
     });
 }
 
-socket.on('startGame', function() {
+let timeLeft=duration;
+
+function updateTimerStatus() {
+    if(timeLeft>0){
+        timeLeft-=0.5;
+        $timer.html(timeLeft+" s");
+        runTimer()
+    }else{
+        timeOver = true
+        gameOver = true
+        updateStatus()
+    }
+    
+}
+function runTimer(){
+    console.log('timer start')
+    setTimeout(updateTimerStatus,500)
+}
+function resetTimer(){
+    timeLeft=duration;
+}
+
+function startGame(){
     gameHasStarted = true;
+    runTimer()
+}
+socket.on('ready', function() {
+    ready = true;
+    updateStatus()
+});
+socket.on('startGame', function() {
+    startGame();
+    updateStatus()
+});
+
+
+socket.on('timeover', function() {
+    gameOver = true;
     updateStatus()
 });
 
